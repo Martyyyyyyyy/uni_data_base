@@ -223,3 +223,55 @@ DELETE FROM subscribers WHERE id = 1;
 
 --Видалити усі підписки на послугу з id = 2:
 DELETE FROM subscriptions WHERE service_id = 2;
+
+
+--3lab (To create a stored procedure to calculate the payment 
+--for a given month and subscriber, you can use the following code:)
+CREATE OR REPLACE PROCEDURE calculate_payment(
+    subscriber_id INTEGER,
+    month INTEGER,
+    year INTEGER
+) AS $$
+DECLARE
+    total DECIMAL(10, 2) := 0.00;
+BEGIN
+    SELECT SUM(monthly_price)
+    INTO total
+    FROM subscriptions s
+    INNER JOIN services ON s.service_id = services.id
+    WHERE s.subscriber_id = calculate_payment.subscriber_id
+    AND start_date <= date_trunc('month', make_date(year, month, 1))
+    AND (end_date IS NULL OR end_date >= date_trunc('month', make_date(year, month, 1)));
+
+    IF total IS NOT NULL THEN
+        UPDATE subscribers
+        SET balance = balance + total
+        WHERE id = subscriber_id;
+
+        INSERT INTO payments(subscriber_id, amount, payment_date)
+        VALUES (subscriber_id, total, make_date(year, month, 1));
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CALL calculate_payment(7, 1, 2022);
+
+--To create a stored procedure that calls the calculate_payment 
+--function for all subscribers, you can use the following code:
+CREATE OR REPLACE PROCEDURE calculate_payments_for_all(
+    month INTEGER,
+    year INTEGER
+) AS $$
+DECLARE
+    subscriber RECORD;
+BEGIN
+    FOR subscriber IN SELECT * FROM subscribers
+    LOOP
+        CALL calculate_payment(subscriber.id, month, year);
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+CALL calculate_payments_for_all(7, 2022);
+
+
