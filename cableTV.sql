@@ -274,4 +274,279 @@ $$ LANGUAGE plpgsql;
 
 CALL calculate_payments_for_all(7, 2022);
 
+--1. У всіх таблицях створити поля UCR, DCR, ULC, DLC
+-- subscribers
+CREATE OR REPLACE FUNCTION update_subscriber_info() RETURNS TRIGGER AS $$
+DECLARE
+    now_date date := current_date;
+BEGIN
+    -- Check if subscriber has unpaid services for last 3 months
+    IF EXISTS (
+        SELECT 1 FROM subscriptions s
+        JOIN payments p ON p.subscriber_id = s.subscriber_id AND p.payment_date >= now_date - INTERVAL '3 months'
+        WHERE s.subscriber_id = NEW.id AND s.end_date > now_date
+        HAVING SUM(p.amount) < SUM(s.service.monthly_price + COALESCE(s.package.monthly_price, 0))
+    ) THEN
+        -- Set suspended flag to true and disallow new service subscriptions
+        UPDATE subscribers SET suspended = true WHERE id = NEW.id;
+        RAISE EXCEPTION 'Subscriber % is suspended due to unpaid services for last 3 months', NEW.id;
+    END IF;
 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER subscribers_created 
+  BEFORE INSERT ON subscribers 
+  FOR EACH ROW 
+  EXECUTE FUNCTION update_subscriber_info();
+
+-- services
+CREATE OR REPLACE FUNCTION services_created()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.created_by = current_user;
+    NEW.created_at = current_timestamp;
+    NEW.modified_by = current_user;
+    NEW.modified_at = current_timestamp;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER services_created
+BEFORE INSERT ON services
+FOR EACH ROW
+EXECUTE FUNCTION services_created();
+
+--packages
+CREATE OR REPLACE FUNCTION packages_created()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.ucr = current_user; 
+    NEW.dcr = current_timestamp; 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER packages_created 
+  BEFORE INSERT ON packages 
+  FOR EACH ROW 
+  EXECUTE FUNCTION packages_created();
+
+CREATE OR REPLACE FUNCTION packages_updated()
+RETURNS TRIGGER AS $$
+BEGIN 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp; 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER packages_updated 
+  BEFORE UPDATE ON packages 
+  FOR EACH ROW 
+  EXECUTE FUNCTION packages_updated();
+
+--movies
+CREATE OR REPLACE FUNCTION movies_created()
+RETURNS TRIGGER AS $$
+BEGIN 
+    NEW.ucr = current_user; 
+    NEW.dcr = current_timestamp; 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER movies_created 
+  BEFORE INSERT ON movies 
+  FOR EACH ROW 
+  EXECUTE FUNCTION movies_created();
+
+CREATE OR REPLACE FUNCTION movies_updated()
+RETURNS TRIGGER AS $$
+BEGIN 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp; 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER movies_updated 
+  BEFORE UPDATE ON movies 
+  FOR EACH ROW 
+  EXECUTE FUNCTION movies_updated();
+
+--subscriptions
+CREATE OR REPLACE FUNCTION subscriptions_created()
+RETURNS TRIGGER AS $$
+BEGIN 
+    NEW.ucr = current_user; 
+    NEW.dcr = current_timestamp; 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER subscriptions_created 
+  BEFORE INSERT ON subscriptions 
+  FOR EACH ROW 
+  EXECUTE FUNCTION subscriptions_created();
+
+CREATE OR REPLACE FUNCTION subscriptions_updated()
+RETURNS TRIGGER AS $$
+BEGIN 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp; 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER subscriptions_updated 
+  BEFORE UPDATE ON subscriptions 
+  FOR EACH ROW 
+  EXECUTE FUNCTION subscriptions_updated();
+
+--movie_orders
+CREATE OR REPLACE FUNCTION movie_orders_created()
+RETURNS TRIGGER AS $$
+BEGIN 
+    NEW.ucr = current_user; 
+    NEW.dcr = current_timestamp; 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER movie_orders_created 
+  BEFORE INSERT ON movie_orders 
+  FOR EACH ROW 
+  EXECUTE FUNCTION movie_orders_created();
+
+CREATE OR REPLACE FUNCTION movie_orders_updated()
+RETURNS TRIGGER AS $$
+BEGIN 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp; 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER movie_orders_updated 
+  BEFORE UPDATE ON movie_orders 
+  FOR EACH ROW 
+  EXECUTE FUNCTION movie_orders_updated();
+
+--payments
+CREATE OR REPLACE FUNCTION payments_created()
+RETURNS TRIGGER AS $$
+BEGIN 
+    NEW.ucr = current_user; 
+    NEW.dcr = current_timestamp; 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+ALTER TABLE payments ADD COLUMN ucr TEXT;
+
+CREATE OR REPLACE TRIGGER payments_created 
+  BEFORE INSERT ON payments 
+  FOR EACH ROW 
+  EXECUTE FUNCTION payments_created();
+
+CREATE OR REPLACE FUNCTION payments_updated()
+RETURNS TRIGGER AS $$
+BEGIN 
+    NEW.ulc = current_user; 
+    NEW.dlc = current_timestamp; 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER payments_updated 
+  BEFORE UPDATE ON payments
+  FOR EACH ROW 
+  EXECUTE FUNCTION payments_updated();
+ERROR:  record "new" has no field "dcr"
+CONTEXT:  PL/pgSQL assignment "NEW.dcr = current_timestamp"
+
+--2.Створити сурогатний ключ для деякої таблиці, 
+--та написати тригер для обов’язкового заповнення цього поля послідовними значеннями.
+CREATE OR REPLACE FUNCTION set_subscription_id()
+RETURNS TRIGGER AS $$
+DECLARE
+  last_id INTEGER;
+BEGIN
+  SELECT MAX(subscription_id) INTO last_id FROM subscriptions;
+  IF last_id IS NULL THEN
+    last_id := 0;
+  END IF;
+  NEW.subscription_id = last_id + 1;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER set_subscription_id_trigger
+BEFORE INSERT ON subscriptions
+FOR EACH ROW
+WHEN (NEW.subscription_id IS NULL)
+EXECUTE FUNCTION set_subscription_id();
+--Цей тригер буде виконуватися перед кожним INSERT в таблицю "subscriptions" 
+--і буде встановлювати значення поля "subscription_id" для нового запису 
+--на основі останнього доданого значення, збільшеного на 1. Якщо таблиця ще порожня, 
+--то значення буде встановлено на 1.
+
+--3
+--Перший тригер для перевірки наявності боргу
+CREATE OR REPLACE FUNCTION check_subscriber_balance() RETURNS TRIGGER AS $$
+DECLARE
+  last_payment_date DATE;
+  amount_owed DECIMAL(10, 2);
+BEGIN
+  SELECT MAX(payment_date) INTO last_payment_date FROM payments WHERE subscriber_id = NEW.subscriber_id;
+  IF last_payment_date IS NULL OR last_payment_date < (CURRENT_DATE - INTERVAL '3 months') THEN
+    SELECT SUM(amount) INTO amount_owed FROM payments WHERE subscriber_id = NEW.subscriber_id;
+    IF amount_owed IS NULL THEN
+      amount_owed := 0;
+    END IF;
+    IF amount_owed > 0 THEN
+      UPDATE subscribers SET suspended = true WHERE id = NEW.subscriber_id;
+      RAISE EXCEPTION 'Subscriber with id % has unpaid balance of %. New service subscriptions are not allowed.', NEW.subscriber_id, amount_owed;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER check_subscriber_balance_trigger
+BEFORE INSERT ON subscriptions
+FOR EACH ROW
+EXECUTE FUNCTION check_subscriber_balance();
+
+
+--Другий тригер для перевірки віку абонента при замовленні кінофільмів для дорослих 
+CREATE OR REPLACE FUNCTION check_subscriber_age() RETURNS TRIGGER AS $$
+DECLARE
+  subscriber_age INTEGER;
+BEGIN
+  SELECT DATE_PART('year', age(NOW(), subscribers.date_of_birth)) INTO subscriber_age FROM subscribers WHERE id = NEW.subscriber_id;
+  IF subscriber_age < 18 AND EXISTS (SELECT 1 FROM movies WHERE id = NEW.movie_id AND genre = 'adult') THEN
+    RAISE EXCEPTION 'Subscriber with id % is not allowed to order adult movies.', NEW.subscriber_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER check_subscriber_age_trigger
+BEFORE INSERT ON movie_orders
+FOR EACH ROW
+EXECUTE FUNCTION check_subscriber_age();
+
+--lab5
