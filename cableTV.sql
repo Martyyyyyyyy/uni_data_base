@@ -550,7 +550,6 @@ FOR EACH ROW
 EXECUTE FUNCTION check_subscriber_age();
 
 --lab5
---1,2,3
 --Адміністратор БД: 
 GRANT ALL PRIVILEGES ON postgres.* TO 'postgres'@'localhost';
 --Клієнт: 
@@ -560,7 +559,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON postgres.services TO 'martin'@'localhost
 --Менеджер з доставки: 
 GRANT SELECT, UPDATE ON postgres.movie_orders TO 'ecommerce'@'localhost';
 
---4
+
 --Роль "Адміністратор": 
 GRANT ALL PRIVILEGES ON postgres.* TO 'admin_role'@'localhost';
 --Роль "Клієнт": 
@@ -570,46 +569,17 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON postgres.table_name TO 'seller_role'@'lo
 --Роль "Менеджер з доставки": 
 GRANT SELECT, UPDATE ON postgres.table_name TO 'role_name'@'localhost';
 
---5
--- Призначення ролі "адміністратор" користувачу з id=1
-GRANT admin_role TO postgres;
-
--- Призначення ролі "модератор" користувачу з id=2
-GRANT moderator_role TO martin;
 
 -- Призначення ролей "користувач" та "автор" користувачу з id=3
-GRANT user_role TO user3;
-GRANT author_role TO user3;
+GRANT ecommerce TO martyyy;
+GRANT moderator_role TO martin;
 
-
---6
 -- Відкликання привілею UPDATE у ролі "модератор"
-REVOKE UPDATE ON posts FROM moderator_role;
-
--- Переконання, що користувач user2 втратив привілей UPDATE
-SELECT has_table_privilege('admin_role', 'posts', 'UPDATE'); -- повинен повернути false
-
-
---7
--- Відкликання ролі "користувач" у користувача user3
-REVOKE user_role FROM user3;
+REVOKE UPDATE ON services FROM moderator_role;
 
 -- Перевірка привілеїв користувача user3
-SELECT has_table_privilege('user3', 'posts', 'SELECT'); -- повинен повернути true
-SELECT has_table_privilege('user3', 'posts', 'INSERT'); -- повинен повернути true
-SELECT has_table_privilege('user3', 'posts', 'UPDATE'); -- повинен повернути false
-SELECT has_table_privilege('user3', 'posts', 'DELETE'); -- повинен повернути false
+SELECT has_table_privilege('martin', 'services', 'SELECT'); -- повинен повернути true
+SELECT has_table_privilege('moderator_role', 'services', 'INSERT'); -- повинен повернути true
 
--- Перевірка, чи залишилися привілеї, призначені користувачу user3 персонально (без ролі)
-SELECT has_table_privilege('user3', 'comments', 'SELECT'); -- повинен повернути true
-SELECT has_table_privilege('user3', 'comments', 'INSERT'); -- повинен повернути true
-SELECT has_table_privilege('user3', 'comments', 'UPDATE'); -- повинен повернути false
-SELECT has_table_privilege('user3', 'comments', 'DELETE'); -- повинен повернути false
-
-
---8
 -- Видалення ролі "автор"
 DROP ROLE IF EXISTS author_role;
-
--- Видалення користувача з id=4
-DROP USER IF EXISTS user4; 
